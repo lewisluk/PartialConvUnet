@@ -48,7 +48,7 @@ def partial_conv(feature, mask, num_outputs, kernel_size=3, strides=2, ln=True, 
                                    activation=None,
                                    kernel_initializer=tf.ones_initializer,
                                    use_bias=False,
-                                   trainable=False,
+                                   # trainable=False,
                                    name=scope+'_mask')
 
     # Calculate the mask ratio on each pixel in the output mask

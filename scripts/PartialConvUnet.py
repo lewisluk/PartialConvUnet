@@ -14,17 +14,17 @@ class PartialConvUnet():
         self.label = tf.placeholder(tf.float32, shape=[None, 512, 512, 3], name='y_label')
         self.data_dir = '/data/PhotoInpainting/scenery512'
         self.result_dir = 'result'
-        self.noisy_label = tf.placeholder(tf.float32, shape=None)
-        self.batch_size = 12
-        self.learningrate = 5e-4
+        self.lr = tf.placeholder(tf.float32, shape=None)
+        self.batch_size = 10
+        self.start_lr = 1e-3
         self.epochs = 1000
         self.clip = 0.1
-        self.valid_weight = 10
+        self.valid_weight = 20
         self.hole_weight = 60
-        self.ssim_loss_weight = 1
-        self.gram_weight = 1
+        self.ssim_loss_weight = 5
+        self.gram_weight = 10
         self.percep_weight = 1
-        self.tv_weight = 1e-5
+        self.tv_weight = 5e-5
 
     def restore(self, ckpt_path=None):
         if ckpt_path:
@@ -119,10 +119,10 @@ class PartialConvUnet():
         var_g = [v for v in tf.trainable_variables() if 'generator' in v.name]
         var_d = [v for v in tf.trainable_variables() if 'discriminator' in v.name]
 
-        self.opt = tf.train.RMSPropOptimizer(learning_rate=self.learningrate).minimize(self.loss, var_list=var_g)
+        self.opt = tf.train.RMSPropOptimizer(learning_rate=self.lr).minimize(self.loss, var_list=var_g)
 
         # apply gradient clipping to d_opt
-        d_optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learningrate)
+        d_optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.lr)
         gvs = d_optimizer.compute_gradients(self.D_loss, var_list=var_d)
         capped_gvs = [(tf.clip_by_value(grad, -self.clip, self.clip), var) for grad, var in gvs]
         self.d_opt = d_optimizer.apply_gradients(capped_gvs)
@@ -133,6 +133,7 @@ class PartialConvUnet():
 
     def trainer(self):
         for epoch in range(self.epochs):
+            lr = (1 - epoch / self.epochs) * self.start_lr + epoch / self.epochs * 0.01 * self.start_lr
             cnt = 0
             train_psnr, train_loss, train_ssim, train_l1_hole,\
             train_l1_valid, train_ssim_loss, train_perc,\
@@ -158,7 +159,8 @@ class PartialConvUnet():
                      self.tv_loss],
                     feed_dict={self.input: input_batch,
                                self.input_mask: mask_batch,
-                               self.label: label_batch})
+                               self.label: label_batch,
+                               self.lr: lr})
 
                 train_loss.append(loss)
                 train_Gloss.append(g_loss)
@@ -174,11 +176,12 @@ class PartialConvUnet():
                 cnt += 1
 
             print(
-                'Ep:{}, Iter:{}, PSNR:{:.4f}, SSIM:{:.4f}, '
+                'Ep:{}, Iter:{}, lr:{:.6f}, PSNR:{:.4f}, SSIM:{:.4f}, '
                 'Loss:{:.4f}, l1_valid:{:.4f}, l1_hole:{:.4f}, ssim_L:{:.4f}, '
                 'perc:{:.4f}, gram:{:.4f}, tv:{:.4f}, Gloss:{:.4f}, Dloss:{:.4f}'.format(
                     epoch + 1,
                     cnt,
+                    lr,
                     np.mean(train_psnr),
                     np.mean(train_ssim),
                     np.mean(train_loss),
